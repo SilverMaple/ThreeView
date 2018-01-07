@@ -322,8 +322,9 @@ class Messenger():
 
         for i in range(len(aw.vpMainView.certainPlane)):
             area = aw.vpMainView.areaForPlane[i]
-            a, b, c = aw.vpMainView.certainPlane[i]
-            reportMessage += (chr(65 + a) + chr(65 + b) + chr(65 + c) + ': ' + str(area) + '\n')
+            for i in aw.vpMainView.certainPlane[i]:
+                reportMessage += (chr(65 + i))
+            reportMessage += ': ' + str(area) + '\n'
 
         reportMessage += '\n表面积：'+ str(aw.vpMainView.areaSum) + '\n'
         reply = QMessageBox.information(aw, 'Report', reportMessage)
@@ -461,6 +462,61 @@ class ViewData():
         area = np.math.sqrt(p * (p - side[0]) * (p - side[1]) * (p - side[2]))
 
         return area
+
+    def countPolygonArea(self, pointIndexs, certainPoints, lineForPlane):
+        area = 0
+        points = []
+        for p in pointIndexs:
+            points.append(certainPoints[p])
+
+        lineForPlane = list(lineForPlane)
+        length = len(lineForPlane)
+        # 对面上的边进行排序
+        for i in range(length-1):
+            if len(lineForPlane[i+1] - lineForPlane[i]) == 1:
+                continue
+            else:
+                for j in range(i+2, len(lineForPlane)):
+                    if len(lineForPlane[j] - lineForPlane[i+1]) == 1:
+                        t = lineForPlane[j]
+                        lineForPlane[j] = lineForPlane[i+1]
+                        lineForPlane[i+1] = t
+                        break
+        # 调整为有序结构
+        sequencePoint = []
+        for i in range(length-1):
+            a = list(lineForPlane[i] - lineForPlane[i+1])[0]
+            b = list(lineForPlane[i] - {a})[0]
+            lineForPlane[i] = [a, b]
+            sequencePoint.append(b)
+        lineForPlane[length-1] = list(lineForPlane[length-1])
+        if lineForPlane[length-1][0] == lineForPlane[0][0]:
+            t = lineForPlane[length-1][0]
+            lineForPlane[length - 1][0] = lineForPlane[length-1][1]
+            lineForPlane[length - 1][1] = t
+        sequencePoint.append(lineForPlane[0][0])
+        print(sequencePoint)
+        # print('line: ', lineForPlane)
+
+        # 使用矢量计算面积并相加
+        # for i in lineForPlane:
+        #     p1, p2 = i
+        #     x1, y1, z1 = certainPoints[p1]
+        #     x2, y2, z2 = certainPoints[p2]
+        #     # s = |a X b| / 2
+        #     # area += 0.5 * (x1*y2 + y1*z2 + z1*x2 - y1*x2 - x1*z2 - z1*y2)
+        #     area += 0.5 * np.linalg.det(np.array([[1, 1, 1],
+        #                                           [x1, y1, z1],
+        #                                           [x2, y2, z2]]))
+
+        # 使用三角面片计算面积
+        for i in range(len(sequencePoint) - 2):
+            print(chr(65+sequencePoint[0]) + chr(65+sequencePoint[i+1]) + chr(65+sequencePoint[i+2]))
+            area += self.countTriangleArea(certainPoints[sequencePoint[0]],
+                                           certainPoints[sequencePoint[i+1]],
+                                           certainPoints[sequencePoint[i+2]])
+
+        return abs(area)
 
     def lineExist(self, view=FrontView, index1=0, index2=1, loop=True):
         # if view==0 and index1==1 and index2==2:
@@ -721,8 +777,9 @@ class ViewMainPainter(MyMplCanvas):
         # 从俯视图->正视图: y->y
         self.axes.clear()
         certainPoints = []  # 确定的几何体上的点
-        certainLines = []  # 确定的几何体上的边（三角面片的边）
-        certainPlane = []
+        certainLines = []  # 确定的几何体上的边
+        certainPlane = [] # 确定的几何体上的面
+        lineForPlane = [] # 组成确定的几何体上的面的边集合
         planeNumForLine = {}  # 每条边上所关联的面数目
         for v in [FrontView, SideView, VerticalView]:
             self.viewType = v
@@ -856,9 +913,10 @@ class ViewMainPainter(MyMplCanvas):
 
                 # print('isExist', isExist)
                 if isExist == 3:
-                    self.axes.plot((certainPoints[i][0], certainPoints[j][0]),
-                                   (certainPoints[i][1], certainPoints[j][1]),
-                                   (certainPoints[i][2], certainPoints[j][2]), color='green')
+                    # 暂时不画，因为后续还要判断是否可视
+                    # self.axes.plot((certainPoints[i][0], certainPoints[j][0]),
+                    #                (certainPoints[i][1], certainPoints[j][1]),
+                    #                (certainPoints[i][2], certainPoints[j][2]), color='green')
                     self.lengthForLine.append(np.math.sqrt(np.square(certainPoints[i][0]-certainPoints[j][0])
                                                            + np.square(certainPoints[i][1]-certainPoints[j][1])
                                                            + np.square(certainPoints[i][2]-certainPoints[j][2])))
@@ -875,106 +933,146 @@ class ViewMainPainter(MyMplCanvas):
                     #                    (certainPoints[i][2], certainPoints[j][2]), color='yellow')
 
         print('certainPoints:    len: ', len(certainPoints), certainPoints)
-        print('certainLines:     len: ', len(certainLines), certainLines)
+        # print('certainLines:     len: ', len(certainLines), certainLines)
         length = len(certainLines)
         # 确定几何体中的面，不适用以前的三角面判定法，改为判断几条边是否可以围成一个平面
         # 遍历所有可链接边的组合，计算是否属于同一平面，是则暂时添加入certainPlane中
-        for i in range(length):
+        count = 0
+        invalidPlane = []
+        for i in range(3, length):
             for testPoints in (itertools.combinations(certainLines, i)):
-                print(testPoints)
+                # print('testPoints', testPoints)
+                # 统计是否可以首尾相连
+                tempCount = { a:0 for a in range(len(certainPoints))}
+                testFlag = True
+                for a, b in testPoints:
+                    tempCount[a] += 1
+                    tempCount[b] += 1
+                    # 如果组成一个大平面的部分点可以组成一个小平面，即判定只有小平面有，大平面没有的线段是可以不存在的。
+                for a in range(len(tempCount)):
+                    if tempCount[a] != 2 and tempCount[a] != 0:
+                        testFlag = False
+                        # print('tempCount', tempCount)
+                        break
+                # 首尾相连，判断是否在一个平面上
+                if testFlag:
+                    tempPlane = [elem for elem in tempCount if tempCount[elem] == 2]
+                    if tempPlane in invalidPlane:
+                        # print('again', tempPlane)
+                        continue
+                    print('tempPlane', tempPlane)
+                    p1, p2, p3 = tempPlane[0:3]
+                    a1, b1, c1 = certainPoints[p1]
+                    a2, b2, c2 = certainPoints[p2]
+                    a3, b3, c3 = certainPoints[p3]
+                    # 矢量方法判断
+                    vectorA = np.array([a2 - a1, b2 - b1, c2 - c1], float)
+                    vectorB = np.array([a3 - a1, b3 - b1, c3 - c1], float)
+                    normal = np.cross(vectorA, vectorB)
+                    dotValue = np.dot(np.array([a1, b1, c1], float), normal)
+                    # 判断其他点是否在三点围成的平面上
+                    testFlag = True
+                    for testI in range(3, len(tempPlane)):
+                        a3, b3, c3 = certainPoints[tempPlane[testI]]
+                        if dotValue != np.dot(np.array([a3, b3, c3], float), normal):
+                            testFlag = False
+                            break
+                    # 矢量方法判断结束
 
-        # 手动计算可以组成平面的边
-        for i in range(length):
-            # print(certainLines)
-            a, b = certainLines[i]
-            tempPlane = [a, b]
-            asa = {}
-            leftLines = certainLines[i:]
-            for leftNum in range(length):
-                leftNum = length - leftNum - 1
-                tempIndex = 0
-                next = -1
-                while leftNum > 0 and len(leftLines) > 0:
-                    if a in leftLines[tempIndex]:
-                        tempLine = leftLines[tempIndex].copy()
-                        tempLine.remove(a)
-                        next = tempLine.pop()
-                        tempPlane.append(next)
-                        leftLines.remove({a, next})
-                        a = next
-                    tempIndex += 1
+                    # 平面方程判断
+                    # 平面方程A * x + B * y + C * z + D = 0
+                    # A = ((b2-b1) * (c3-c1) - (c2-c1) * (b3-b1))
+                    # B = ((c2-c1) * (a3-a1) - (a2-a1) * (c3-c1))
+                    # C = ((a2-a1) * (b3-b1) - (b2-b1) * (a3-a1))
+                    # D = -(A * a1 + B * b1 + C * c1)
+                    # for testI in range(3, len(tempPlane)):
+                    #     a4, b4, c4 = certainPoints[tempPlane[testI]]
+                    #     if 0 != A * a4 + B * b4 + C * c4 + D:
+                    #         if testFlag == True:
+                    #             print("wrong vector but plane!!!!!!!!!!!!!!!!!")
+                    #         testFlag = False
+                    #         break
+                    # 平面方程判断结束
 
-                    # 首尾可相连，开始验证是否在同一平面上
-                    if next == b:
-                        p1, p2, p3 = tempPlane[0:3]
-                        a1, b1, c1 = certainPoints[p1]
-                        a2, b2, c2 = certainPoints[p2]
-                        a3, b3, c3 = certainPoints[p3]
-                        vectorA = np.array([a2-a1, b2-b1, c2-c1], float)
-                        vectorB = np.array([a3-a1, b3-b1, c3-c1], float)
-                        normal = np.cross(vectorA, vectorB)
-                        dotValue = np.dot(np.array([a1, b1, c1], float), normal)
-                        # 判断其他点是否在三点围成的平面上
-                        testFlag = True
-                        for testI in range(3, len(tempPlane)):
-                            a3, b3, c3 = certainPoints[testI]
-                            if dotValue != np.dot(np.array([a3, b3, c3], float), normal):
-                                testFlag = False
-                                break
-                        if testFlag and certainPlane.count(set(tempPlane)) == 0:
-                            certainPlane.append(set(tempPlane))
-            # for j in range(i + 1, length):
-            #     assert (len(certainLines[i]) == 2)
-            #     a, b = certainLines[i]
-            #     # restLines = certainLines[j].copy()
-            #     # restLines.remove()
-            #     if a in certainLines[j]:
-            #         tempLine = certainLines[j].copy()
-            #         tempLine.remove(a)
-            #         c = tempLine.pop()
-            #     elif b in certainLines[j]:
-            #         tempLine = certainLines[j].copy()
-            #         tempLine.remove(b)
-            #         c = tempLine.pop()
-            #     else:
-            #         continue
-            #     if certainLines.count({b, c}) > 0 and certainLines.count({a, c}) > 0 and certainPlane.count(
-            #             {a, b, c}) == 0:
-            #         certainPlane.append({a, b, c})
-            #         planeNumForLine[str({a, b})] += 1
-            #         planeNumForLine[str({b, c})] += 1
-            #         planeNumForLine[str({a, c})] += 1
+                    if testFlag and certainPlane.count(set(tempPlane)) == 0:
+                        certainPlane.append(set(tempPlane))
+                        lineForPlane.append(testPoints)
+                        # 统计每条边所关联面数
+                        for i in testPoints:
+                            planeNumForLine[str(set(i))] += 1
+                    elif not testFlag:
+                        invalidPlane.append(tempPlane)
+                count += 1
 
-        # 去除在几何体内的面
+        print('count', count)
+
+        # 去除在几何体内的面与不必要的三角面
+        # 删除大平面中的小平面
+        indexP = 0
+        while indexP < len(certainPlane):
+            p = certainPlane[indexP]
+            print('test:', p)
+            for i in range(3, len(p)):
+                for subPlane in itertools.combinations(p, i):
+                    subPlane = set(subPlane)
+                    if subPlane in certainPlane:
+                        tempPoint = p - subPlane
+                        deletePoint = []
+                        print('lineForPlane[indexP]', lineForPlane[indexP])
+                        for l in lineForPlane[indexP]:
+                            a, b = l
+                            if a in tempPoint and b not in tempPoint or b in tempPoint and a not in tempPoint:
+                                deletePoint.append(list(l - tempPoint)[0])
+                        # 找到需要去除的线段
+                        if len(deletePoint) == 2 and certainLines.count(set(deletePoint)) > 0:
+                            lineIndex = certainLines.index(set(deletePoint))
+                            certainLines.pop(lineIndex)
+                            self.lengthForLine.pop(lineIndex)
+                            print('delete line:', str(deletePoint))
+                        print('remove subplane:', subPlane)
+                        index = certainPlane.index(subPlane)
+                        if index < indexP:
+                            indexP -= 1
+                        for i in lineForPlane[index]:
+                            planeNumForLine[str(i)] -= 1
+                        certainPlane.pop(index)
+                        lineForPlane.pop(index)
+            indexP += 1
+
         length = len(certainPlane)
         index = 0
         while index < length:
-            try:
-                a, b, c = certainPlane[index]
-            except:
-                print('here', index)
-            if planeNumForLine[str({a, b})] > 2 and planeNumForLine[str({b, c})] > 2 and planeNumForLine[
-                str({a, c})] > 2:
-                planeNumForLine[str({a, b})] -= 1
-                planeNumForLine[str({b, c})] -= 1
-                planeNumForLine[str({a, c})] -= 1
-                certainPlane.remove({a, b, c})
+            # 不再只是判断三条边
+            # try:
+            #     a, b, c = certainPlane[index]
+            # except:
+            #     print('here', index)
+
+            isValid = False
+            # 通过边关联面数删除面
+            for i in lineForPlane[index]:
+                # 如果面中存在一边，它的关联面数为2，则该面肯定为确定面
+                if planeNumForLine[str(i)] == 2:
+                    isValid = True
+                    break
+            if not isValid:
+                for i in lineForPlane[index]:
+                    planeNumForLine[str(i)] -= 1
+                lineForPlane.pop(index)
+                print('remove plane: ', certainPlane[index])
+                certainPlane.pop(index)
                 index -= 1
                 length -= 1
             index += 1
 
+        print('certainLines:     len: ', len(certainLines), certainLines)
         print('certainPlane:     len: ', len(certainPlane), certainPlane)
         print('planeNumForLine:  len: ', len(planeNumForLine), planeNumForLine)
 
         areaSum = 0
         self.areaForPlane = []
         for i in range(len(certainPlane)):
-            a, b, c = certainPlane[i]
-            p1 = certainPoints[a]
-            p2 = certainPoints[b]
-            p3 = certainPoints[c]
-            print(p1, p2, p3)
-            area = self.viewData.countTriangleArea(p1, p2, p3)
+            area = self.viewData.countPolygonArea(certainPlane[i], certainPoints, lineForPlane[i])
             self.areaForPlane.append(area)
             areaSum += area
             print(area)
@@ -985,28 +1083,12 @@ class ViewMainPainter(MyMplCanvas):
         self.areaSum = areaSum
         print(self.areaSum)
 
-        # length = len(self.viewData.Line[self.viewType]['s'])
-        # for i in range(length):
-        #     sIndex = self.viewData.Line[self.viewType]['s'][i]
-        #     eIndex = self.viewData.Line[self.viewType]['e'][i]
-        #     real = self.viewData.Line[self.viewType]['real'][i]
-        #
-        #     x, y, z = np.multiply(self.viewData.getPoint(self.viewType, sIndex), 100)
-        #     x1, y1, z1 = np.multiply(self.viewData.getPoint(self.viewType, eIndex), 100)
-        #
-        #     if real is DashLine:
-        #         pen.setStyle(QtCore.Qt.DashLine)
-        #     else:
-        #         pen.setStyle(QtCore.Qt.SolidLine)
-        #
-        #     if self.viewType is FrontView:
-        #         qp.drawLine(y, z, y1, z1)
-        #     elif self.viewType is SideView:
-        #         qp.drawLine(x, z, x1, z1)
-        #     elif self.viewType is VerticalView:
-        #         qp.drawLine(x, y, x1, y1)
-        #     else:
-        #         break
+        # 画出线段
+        for line in certainLines:
+            i, j = line
+            self.axes.plot((certainPoints[i][0], certainPoints[j][0]),
+                           (certainPoints[i][1], certainPoints[j][1]),
+                           (certainPoints[i][2], certainPoints[j][2]), color='green')
 
         self.axes.set_zlabel('z')
         self.axes.set_ylabel('y')
@@ -1015,8 +1097,9 @@ class ViewMainPainter(MyMplCanvas):
 
     def verifyData(self):
         certainPoints = []  # 确定的几何体上的点
-        certainLines = []  # 确定的几何体上的边（三角面片的边）
+        certainLines = []  # 确定的几何体上的边
         certainPlane = []
+        lineForPlane = []
         planeNumForLine = {}  # 每条边上所关联的面数目
         for v in [FrontView, SideView, VerticalView]:
             self.viewType = v
@@ -1121,47 +1204,128 @@ class ViewMainPainter(MyMplCanvas):
                     planeNumForLine[str({i, j})] = 0
 
         length = len(certainLines)
-        for i in range(length):
-            for j in range(i + 1, length):
-                assert (len(certainLines[i]) == 2)
-                a, b = certainLines[i]
-                if a in certainLines[j]:
-                    tempLine = certainLines[j].copy()
-                    tempLine.remove(a)
-                    c = tempLine.pop()
-                elif b in certainLines[j]:
-                    tempLine = certainLines[j].copy()
-                    tempLine.remove(b)
-                    c = tempLine.pop()
-                else:
-                    continue
-                if certainLines.count({b, c}) > 0 and certainLines.count({a, c}) > 0 and certainPlane.count(
-                        {a, b, c}) == 0:
-                    certainPlane.append({a, b, c})
-                    planeNumForLine[str({a, b})] += 1
-                    planeNumForLine[str({b, c})] += 1
-                    planeNumForLine[str({a, c})] += 1
+        # 确定几何体中的面，不适用以前的三角面判定法，改为判断几条边是否可以围成一个平面
+        # 遍历所有可链接边的组合，计算是否属于同一平面，是则暂时添加入certainPlane中
+        count = 0
+        invalidPlane = []
+        for i in range(3, length):
+            for testPoints in (itertools.combinations(certainLines, i)):
+                # print('testPoints', testPoints)
+                # 统计是否可以首尾相连
+                tempCount = {a: 0 for a in range(len(certainPoints))}
+                testFlag = True
+                for a, b in testPoints:
+                    tempCount[a] += 1
+                    tempCount[b] += 1
+                    # 如果组成一个大平面的部分点可以组成一个小平面，即判定只有小平面有，大平面没有的线段是可以不存在的。
+                for a in range(len(tempCount)):
+                    if tempCount[a] != 2 and tempCount[a] != 0:
+                        testFlag = False
+                        # print('tempCount', tempCount)
+                        break
+                # 首尾相连，判断是否在一个平面上
+                if testFlag:
+                    tempPlane = [elem for elem in tempCount if tempCount[elem] == 2]
+                    if tempPlane in invalidPlane:
+                        # print('again', tempPlane)
+                        continue
+                    p1, p2, p3 = tempPlane[0:3]
+                    a1, b1, c1 = certainPoints[p1]
+                    a2, b2, c2 = certainPoints[p2]
+                    a3, b3, c3 = certainPoints[p3]
+                    # 矢量方法判断
+                    vectorA = np.array([a2 - a1, b2 - b1, c2 - c1], float)
+                    vectorB = np.array([a3 - a1, b3 - b1, c3 - c1], float)
+                    normal = np.cross(vectorA, vectorB)
+                    dotValue = np.dot(np.array([a1, b1, c1], float), normal)
+                    # 判断其他点是否在三点围成的平面上
+                    testFlag = True
+                    for testI in range(3, len(tempPlane)):
+                        a3, b3, c3 = certainPoints[tempPlane[testI]]
+                        if dotValue != np.dot(np.array([a3, b3, c3], float), normal):
+                            testFlag = False
+                            break
+                    # 矢量方法判断结束
 
-        # 去除在几何体内的面
+                    # 平面方程判断
+                    # 平面方程A * x + B * y + C * z + D = 0
+                    # A = ((b2-b1) * (c3-c1) - (c2-c1) * (b3-b1))
+                    # B = ((c2-c1) * (a3-a1) - (a2-a1) * (c3-c1))
+                    # C = ((a2-a1) * (b3-b1) - (b2-b1) * (a3-a1))
+                    # D = -(A * a1 + B * b1 + C * c1)
+                    # for testI in range(3, len(tempPlane)):
+                    #     a4, b4, c4 = certainPoints[tempPlane[testI]]
+                    #     if 0 != A * a4 + B * b4 + C * c4 + D:
+                    #         if testFlag == True:
+                    #             print("wrong vector but plane!!!!!!!!!!!!!!!!!")
+                    #         testFlag = False
+                    #         break
+                    # 平面方程判断结束
+
+                    if testFlag and certainPlane.count(set(tempPlane)) == 0:
+                        certainPlane.append(set(tempPlane))
+                        lineForPlane.append(testPoints)
+                        # 统计每条边所关联面数
+                        for i in testPoints:
+                            planeNumForLine[str(set(i))] += 1
+                    elif not testFlag:
+                        invalidPlane.append(tempPlane)
+                count += 1
+
+        # 去除在几何体内的面与不必要的三角面
+        # 删除大平面中的小平面
+        indexP = 0
+        while indexP < len(certainPlane):
+            p = certainPlane[indexP]
+            for i in range(3, len(p)):
+                for subPlane in itertools.combinations(p, i):
+                    subPlane = set(subPlane)
+                    if subPlane in certainPlane:
+                        tempPoint = p - subPlane
+                        deletePoint = []
+                        for l in lineForPlane[indexP]:
+                            a, b = l
+                            if a in tempPoint and b not in tempPoint or b in tempPoint and a not in tempPoint:
+                                deletePoint.append(list(l - tempPoint)[0])
+                        # 找到需要去除的线段
+                        if len(deletePoint) == 2 and certainLines.count(set(deletePoint)) > 0:
+                            certainLines.remove(set(deletePoint))
+                        index = certainPlane.index(subPlane)
+                        if index < indexP:
+                            indexP -= 1
+                        for i in lineForPlane[index]:
+                            planeNumForLine[str(i)] -= 1
+                        certainPlane.pop(index)
+                        lineForPlane.pop(index)
+            indexP += 1
+
         length = len(certainPlane)
         index = 0
         while index < length:
-            try:
-                a, b, c = certainPlane[index]
-            except:
-                print('here', index)
-            if planeNumForLine[str({a, b})] > 2 and planeNumForLine[str({b, c})] > 2 and planeNumForLine[
-                str({a, c})] > 2:
-                planeNumForLine[str({a, b})] -= 1
-                planeNumForLine[str({b, c})] -= 1
-                planeNumForLine[str({a, c})] -= 1
-                certainPlane.remove({a, b, c})
+            # 不再只是判断三条边
+            # try:
+            #     a, b, c = certainPlane[index]
+            # except:
+            #     print('here', index)
+
+            isValid = False
+            # 通过边关联面数删除面
+            for i in lineForPlane[index]:
+                # 如果面中存在一边，它的关联面数为2，则该面肯定为确定面
+                if planeNumForLine[str(i)] == 2:
+                    isValid = True
+                    break
+            if not isValid:
+                for i in lineForPlane[index]:
+                    planeNumForLine[str(i)] -= 1
+                lineForPlane.pop(index)
+                certainPlane.pop(index)
                 index -= 1
                 length -= 1
             index += 1
 
         for i in planeNumForLine:
-            if planeNumForLine[i] != 2:
+            if planeNumForLine[i] != 2 and eval(i) in certainLines:
                 a, b = eval(i)
                 print(a, b)
                 errorMessage = '边：' + chr(65+a) + chr(65+b) + '在几何体中所属面片数为' + str(planeNumForLine[i]) + '，不为2。'
@@ -1708,17 +1872,17 @@ class ApplicationWindow(QMainWindow):
         dataLayout.addWidget(propLabels[3], line, 0)
         line += 1
         dataLayout.addWidget(QLabel('点数'), line, 0)
-        self.pointNumLabel = QLabel('6')
+        self.pointNumLabel = QLabel(str(len(self.vpMainView.certainPoints)))
         self.pointNumLabel.setFixedSize(30, 20)
         dataLayout.addWidget(self.pointNumLabel)
         line += 1
         dataLayout.addWidget(QLabel('线段数'), line, 0)
-        self.lineNumLabel = QLabel('12')
+        self.lineNumLabel = QLabel(str(len(self.vpMainView.certainLines)))
         self.lineNumLabel.setFixedSize(30, 20)
         dataLayout.addWidget(self.lineNumLabel)
         line += 1
         dataLayout.addWidget(QLabel('三角面数'), line, 0)
-        self.areaNumLabel = QLabel('8')
+        self.areaNumLabel = QLabel(str(len(self.vpMainView.certainPlane)))
         self.areaNumLabel.setFixedSize(30, 20)
         dataLayout.addWidget(self.areaNumLabel)
         line += 1
