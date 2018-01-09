@@ -210,16 +210,12 @@ class Messenger():
                 reply = QMessageBox.information(aw, '错误', '请补充完整的端点名称!')
         # 面积：查询
         elif index == 5:
-            # a = ord(aw.dataLineEdits[6].text()) - 65
-            # b = ord(aw.dataLineEdits[7].text()) - 65
-            # c = ord(aw.dataLineEdits[8].text()) - 65
-            p = []
-            for i in aw.dataLineEdits[6].text():
-                p.append(ord(i) - 65)
-            p = set(p)
+            a = ord(aw.dataLineEdits[6].text()) - 65
+            b = ord(aw.dataLineEdits[7].text()) - 65
+            c = ord(aw.dataLineEdits[8].text()) - 65
 
-            if aw.vpMainView.certainPlane.count(p) > 0:
-                i = aw.vpMainView.certainPlane.index(p)
+            if aw.vpMainView.certainPlane.count({a, b, c}) > 0:
+                i = aw.vpMainView.certainPlane.index({a, b, c})
                 aw.areaLabel.setText(str(round(aw.vpMainView.areaForPlane[i], 3)))
             else:
                 reply = QMessageBox.information(aw, '错误', '指定面不存在!')
@@ -1808,7 +1804,7 @@ class ApplicationWindow(QMainWindow):
             propLabel.setFixedHeight(20)
             propLabels.append(propLabel)
         self.dataLineEdits = []
-        for n in range(7):
+        for n in range(9):
             temp = QLineEdit()
             self.dataLineEdits.append(temp)
 
@@ -1844,7 +1840,7 @@ class ApplicationWindow(QMainWindow):
         dataLayout.addWidget(self.dataLineEdits[5], line, 3)
         line += 1
         dataLayout.addWidget(QLabel('长度'), line, 0)
-        self.lengthLabel = QLabel('-')
+        self.lengthLabel = QLabel('10')
         self.lengthLabel.setFixedHeight(30)
         dataLayout.addWidget(self.lengthLabel, line, 1, 1, 6)
         line += 1
@@ -1858,13 +1854,13 @@ class ApplicationWindow(QMainWindow):
         line += 1
         dataLayout.addWidget(QLabel('端点'), line, 0)
         dataLayout.addWidget(self.dataLineEdits[6], line, 1)
-        # dataLayout.addWidget(QLabel('-'), line, 2)
-        # dataLayout.addWidget(self.dataLineEdits[7], line, 3)
-        # dataLayout.addWidget(QLabel('-'), line, 4)
-        # dataLayout.addWidget(self.dataLineEdits[8], line, 5)
+        dataLayout.addWidget(QLabel('-'), line, 2)
+        dataLayout.addWidget(self.dataLineEdits[7], line, 3)
+        dataLayout.addWidget(QLabel('-'), line, 4)
+        dataLayout.addWidget(self.dataLineEdits[8], line, 5)
         line += 1
         dataLayout.addWidget(QLabel('面积'), line, 0)
-        self.areaLabel = QLabel('-')
+        self.areaLabel = QLabel('10')
         self.areaLabel.setFixedHeight(30)
         # self.areaLabel.setFixedSize(30, 20)
         dataLayout.addWidget(self.areaLabel, line, 1, 1, 6)
@@ -2009,21 +2005,9 @@ class ApplicationWindow(QMainWindow):
                           """
     1.	平面图转3D主要功能如下：
     a)	提供三视图生成对应立体图
-    b)	拖动三视图点改变立体图
-    C)	计算立体表面积
-
-    2. 按键功能说明：
-    Ctrl + O: 打开数据文件
-    Ctrl + D: 清空当前数据
-    Ctrl + S: 保存当前数据
-    （模板数据文件保存在model文件夹下）
-
-    3. 右侧面板说明：
-    （点区域与线区域需要选择当前视图或点击该视图进行修改）
-    点区域支持三视图中点的新增，修改与删除
-    线区域支持三视图中线的新增，删除与查询，包括主视图中线的查询
-    面区域支持主视图中面积查询
-    几何体区域包含对数据的检验，生成以及生成几何体的数据报告
+    b)	拖动三视图点实时改变立体图
+    c)	拖动立体图点实时改变三视图
+    d)	计算立体表面积
         """
                           )
 
