@@ -1,3 +1,8 @@
+'''
+  Author: SilverMaple
+  Created Time: 2017.12.17
+  Last Modified: 2018.01.12
+'''
 import sys
 import random
 import pickle
@@ -1711,28 +1716,28 @@ class ApplicationWindow(QMainWindow):
         self.setAttribute(QtCore.Qt.WA_DeleteOnClose)
         self.setWindowTitle("程序主窗口")
 
-        self.file_menu = QMenu('&File', self)
-        self.file_menu.addAction('&Open', self.loadData,
+        self.file_menu = QMenu('&文件', self)
+        self.file_menu.addAction('&打开', self.loadData,
                                  QtCore.Qt.CTRL + QtCore.Qt.Key_O)
-        self.file_menu.addAction('&Save', self.saveData,
+        self.file_menu.addAction('&保存', self.saveData,
                                  QtCore.Qt.CTRL + QtCore.Qt.Key_S)
-        self.file_menu.addAction('&Clear', self.clearData,
+        self.file_menu.addAction('&清空', self.clearData,
                                  QtCore.Qt.CTRL + QtCore.Qt.Key_D)
-        self.file_menu.addAction('&Quit', self.fileQuit,
+        self.file_menu.addAction('&退出', self.fileQuit,
                                  QtCore.Qt.CTRL + QtCore.Qt.Key_Q)
         self.menuBar().addMenu(self.file_menu)
 
-        self.help_menu = QMenu('&Help', self)
+        # self.help_menu = QMenu('&关于', self)
         self.menuBar().addSeparator()
-        self.menuBar().addAction('&Open', self.loadData)
+        self.menuBar().addAction('&打开', self.loadData)
         self.menuBar().addSeparator()
-        self.menuBar().addAction('&Save', self.saveData)
+        self.menuBar().addAction('&保存', self.saveData)
         self.menuBar().addSeparator()
-        self.menuBar().addAction('&Clear', self.clearData)
+        self.menuBar().addAction('&清空', self.clearData)
         self.menuBar().addSeparator()
-        self.menuBar().addMenu(self.help_menu)
+        # self.menuBar().addMenu(self.help_menu)
 
-        self.help_menu.addAction('&About', self.about)
+        self.menuBar().addAction('&帮助', self.about)
 
         self.main_widget = QWidget(self)
 
@@ -1885,7 +1890,7 @@ class ApplicationWindow(QMainWindow):
         self.lineNumLabel.setFixedSize(30, 20)
         dataLayout.addWidget(self.lineNumLabel)
         line += 1
-        dataLayout.addWidget(QLabel('三角面数'), line, 0)
+        dataLayout.addWidget(QLabel('面数'), line, 0)
         self.areaNumLabel = QLabel(str(len(self.vpMainView.certainPlane)))
         self.areaNumLabel.setFixedSize(30, 20)
         dataLayout.addWidget(self.areaNumLabel)
@@ -1924,7 +1929,7 @@ class ApplicationWindow(QMainWindow):
         self.main_widget.setFocus()
         self.setCentralWidget(self.main_widget)
         # 状态条显示2秒
-        self.statusBar().showMessage("Deal Line: 2017.12.23")
+        self.statusBar().showMessage("就绪")
         # self.statusBar().showMessage("转换中", 10000)
         self.center()
 
@@ -2005,7 +2010,7 @@ class ApplicationWindow(QMainWindow):
         self.fileQuit()
 
     def about(self):
-        QMessageBox.about(self, "About",
+        QMessageBox.about(self, "帮助",
                           """
     1.	平面图转3D主要功能如下：
     a)	提供三视图生成对应立体图
@@ -2024,6 +2029,9 @@ class ApplicationWindow(QMainWindow):
     线区域支持三视图中线的新增，删除与查询，包括主视图中线的查询
     面区域支持主视图中面积查询
     几何体区域包含对数据的检验，生成以及生成几何体的数据报告
+
+    4. 程序代码可在以下地址获取：
+    https://github.com/SilverMaple/ThreeView
         """
                           )
 
